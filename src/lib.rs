@@ -62,6 +62,16 @@ macro_rules! defer {
 	};
 }
 
+/// Constructs an UNICODE_STRING helper.
+#[inline]
+pub fn unicode_string(s: &[u16]) -> UNICODE_STRING {
+	UNICODE_STRING {
+		Length: mem::size_of_val(s) as u16,
+		MaximumLength: mem::size_of_val(s) as u16,
+		Buffer: s.as_ptr() as *mut u16,
+	}
+}
+
 //----------------------------------------------------------------
 
 /// Errors for [`setup`](fn.setup.html).
@@ -607,26 +617,14 @@ impl Driver {
 	/// * The system driver is available on disk, see [`write`](#method.write).
 	pub fn load(&self) -> Result<i32, i32> {
 		unsafe {
-			let service_path = self.service_path();
-			let mut us = UNICODE_STRING {
-				Length: mem::size_of_val(service_path) as u16,
-				MaximumLength: mem::size_of_val(service_path) as u16,
-				Buffer: service_path.as_ptr() as *mut u16,
-			};
-			let result = NtLoadDriver(&mut us);
+			let result = NtLoadDriver(&mut unicode_string(self.service_path()));
 			if result < 0 { Err(result) } else { Ok(result) }
 		}
 	}
 	/// Invokes `NtUnloadDriver` to unload the driver.
 	pub fn unload(&self) -> Result<i32, i32> {
 		unsafe {
-			let service_path = self.service_path();
-			let mut us = UNICODE_STRING {
-				Length: mem::size_of_val(service_path) as u16,
-				MaximumLength: mem::size_of_val(service_path) as u16,
-				Buffer: service_path.as_ptr() as *mut u16,
-			};
-			let result = NtUnloadDriver(&mut us);
+			let result = NtUnloadDriver(&mut unicode_string(self.service_path()));
 			if result < 0 { Err(result) } else { Ok(result) }
 		}
 	}
