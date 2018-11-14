@@ -377,6 +377,8 @@ impl Driver {
 	// Rustdoc includes all the bytes in the documentation...
 	#[doc(hidden)]
 	/// The Capcom.sys driver image.
+	///
+	/// Download [the binary image here](https://github.com/CasualX/capcom0/blob/4f7b101dc680255b7a5fbd340552bbcd28f38854/driver/Capcom.sys).
 	pub const IMAGE: &'static [u8; 0x2950] = &include!("capcom.rs");
 
 	/// The full NT service path.
