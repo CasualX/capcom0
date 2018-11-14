@@ -377,7 +377,7 @@ impl Driver {
 	// Rustdoc includes all the bytes in the documentation...
 	#[doc(hidden)]
 	/// The Capcom.sys driver image.
-	pub const IMAGE: &'static [u8; 0x2950] = include_bytes!("../driver/Capcom.sys");
+	pub const IMAGE: &'static [u8; 0x2950] = &include!("capcom.rs");
 
 	/// The full NT service path.
 	///
