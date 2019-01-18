@@ -425,16 +425,16 @@ impl Driver {
 			// Get the total length of the current directory including nul terminator
 			let cd_len = GetCurrentDirectoryW(0, ptr::null_mut());
 			// Allocate enough memory for the native path
-			let mut native_path = vec![0; 4 + cd_len as usize + SLASH_CAPCOM_SYS.len()].into_boxed_slice();
+			let mut native_path = vec![0; 3 + cd_len as usize + SLASH_CAPCOM_SYS.len()].into_boxed_slice();
 			// Write the NT path prefix \??\
 			native_path[0] = b'\\' as u16;
 			native_path[1] = b'?' as u16;
 			native_path[2] = b'?' as u16;
 			native_path[3] = b'\\' as u16;
 			// Followed by the current directory path
-			let cd_len = GetCurrentDirectoryW(cd_len, native_path.as_mut_ptr().offset(4));
+			GetCurrentDirectoryW(cd_len, native_path.as_mut_ptr().offset(4));
 			// Followed by the driver file name \Capcom.sys and nul terminator
-			native_path[4 + cd_len as usize..].copy_from_slice(&SLASH_CAPCOM_SYS);
+			native_path[3 + cd_len as usize..].copy_from_slice(&SLASH_CAPCOM_SYS);
 			// The service path is a fixed string
 			let service_path = NT_SERVICES_PATH.to_vec().into_boxed_slice();
 			Driver { service_path, native_path }
