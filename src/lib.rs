@@ -370,8 +370,8 @@ pub fn recover() -> Result<bool, Error> {
 ///
 /// Holds the service and native paths where the driver is located.
 pub struct Driver {
-	service_path: Vec<u16>,
-	native_path: Vec<u16>,
+	service_path: Box<[u16]>,
+	native_path: Box<[u16]>,
 }
 impl Driver {
 	// Rustdoc includes all the bytes in the documentation...
@@ -427,16 +427,18 @@ impl Driver {
 			// Get the total length of the current directory including nul terminator
 			let cd_len = GetCurrentDirectoryW(0, ptr::null_mut());
 			// Allocate enough memory for the native path
-			let mut native_path = Vec::<u16>::with_capacity(4 + cd_len as usize + SLASH_CAPCOM_SYS.len());
+			let mut native_path = vec![0; 3 + cd_len as usize + SLASH_CAPCOM_SYS.len()].into_boxed_slice();
 			// Write the NT path prefix \??\
-			*(native_path.as_mut_ptr() as *mut [u16; 4]) = /*\??\*/[92u16, 63, 63, 92];
+			native_path[0] = b'\\' as u16;
+			native_path[1] = b'?' as u16;
+			native_path[2] = b'?' as u16;
+			native_path[3] = b'\\' as u16;
 			// Followed by the current directory path
-			let cd_len = GetCurrentDirectoryW(cd_len, native_path.as_mut_ptr().offset(4));
-			native_path.set_len(4 + cd_len as usize);
+			GetCurrentDirectoryW(cd_len, native_path.as_mut_ptr().offset(4));
 			// Followed by the driver file name \Capcom.sys and nul terminator
-			native_path.extend_from_slice(&SLASH_CAPCOM_SYS);
+			native_path[3 + cd_len as usize..].copy_from_slice(&SLASH_CAPCOM_SYS);
 			// The service path is a fixed string
-			let service_path = NT_SERVICES_PATH.to_vec();
+			let service_path = NT_SERVICES_PATH.to_vec().into_boxed_slice();
 			Driver { service_path, native_path }
 		}
 	}
@@ -453,15 +455,16 @@ impl Driver {
 				let mut service_path = NT_SERVICES_PATH[..52].to_vec();
 				service_path.extend(name.encode_wide());
 				service_path.push(0);
-				service_path
+				service_path.into_boxed_slice()
 			}
 			else {
-				NT_SERVICES_PATH.to_vec()
+				NT_SERVICES_PATH.to_vec().into_boxed_slice()
 			};
 		// Build the native path
 		let mut native_path = /*\??\*/[92u16, 63, 63, 92].to_vec();
 		native_path.extend(path.encode_wide());
 		native_path.push(0);
+		let native_path = native_path.into_boxed_slice();
 		// Build the Driver object from these strings
 		Driver { service_path, native_path }
 	}
@@ -470,18 +473,21 @@ impl Driver {
 		// Build the service path
 		let service_path =
 			if let Some(name) = name {
-				let mut service_path = NT_SERVICES_PATH[..52].to_vec();
-				service_path.extend_from_slice(name);
-				service_path.push(0);
+				let mut service_path = vec![0; 52 + name.len() + 1].into_boxed_slice();
+				service_path[..52].copy_from_slice(&NT_SERVICES_PATH[..52]);
+				service_path[52..52 + name.len()].copy_from_slice(name);
 				service_path
 			}
 			else {
-				NT_SERVICES_PATH.to_vec()
+				NT_SERVICES_PATH.to_vec().into_boxed_slice()
 			};
 		// Build the native path
-		let mut native_path = /*\??\*/[92u16, 63, 63, 92].to_vec();
-		native_path.extend_from_slice(&path);
-		native_path.push(0);
+		let mut native_path = vec![0; 4 + path.len() + 1].into_boxed_slice();
+		native_path[0] = b'\\' as u16;
+		native_path[1] = b'?' as u16;
+		native_path[2] = b'?' as u16;
+		native_path[3] = b'\\' as u16;
+		native_path[4..4 + path.len()].copy_from_slice(path);
 		// Build the Driver object from these strings
 		Driver { service_path, native_path }
 	}
