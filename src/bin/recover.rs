@@ -1,11 +1,9 @@
 /*!
 Automate recovery when something goes wrong with the Capcom driver.
-*/
+ */
 
 // Only available to 64-bit windows targets.
 #![cfg(all(windows, target_pointer_width = "64"))]
-
-extern crate capcom0;
 
 fn main() {
 	match capcom0::recover() {
