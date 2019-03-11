@@ -20,7 +20,7 @@ Note that Administrator is required to load the Capcom driver.
 ```rust
 fn main() {
 	// Easy setup to load the driver and open its device handle.
-	let result = capcom0::setup(|device| {
+	let result = capcom0::setup(|_driver, device| {
 		let mut success = false;
 		// This unsafe is an understatement :)
 		unsafe {

