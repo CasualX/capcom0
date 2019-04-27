@@ -809,20 +809,17 @@ impl Drop for Device {
 
 //----------------------------------------------------------------
 
-/// The callback is passed the address of [`MmGetSystemRoutineAddress`](https://docs.microsoft.com/en-us/windows-hardware/drivers/ddi/content/wdm/nf-wdm-mmgetsystemroutineaddress).
-pub type MmGetSystemRoutineAddressFn = unsafe extern "system" fn(name: PUNICODE_STRING) -> PVOID;
-
-/// Kernel callback context.
+/// Callback context.
 ///
 /// The closure passed to [`Device::elevate`](struct.Device.html#method.elevate) receives this context as an argument.
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct Context {
-	/// [`MmGetSystemRoutineAddress`](https://docs.microsoft.com/en-us/windows-hardware/drivers/ddi/content/wdm/nf-wdm-mmgetsystemroutineaddress).
-	pub get_system_routine_address: MmGetSystemRoutineAddressFn,
-	/// Pointer to [IRP structure](https://msdn.microsoft.com/en-us/library/windows/hardware/ff550694.aspx).
+	/// Address of [MmGetSystemRoutineAddress](https://docs.microsoft.com/en-us/windows-hardware/drivers/ddi/content/wdm/nf-wdm-mmgetsystemroutineaddress).
+	pub get_system_routine_address: unsafe extern "system" fn(name: PUNICODE_STRING) -> PVOID,
+	/// Pointer to the [IRP structure](https://msdn.microsoft.com/en-us/library/windows/hardware/ff550694.aspx) argument.
 	pub irp: usize,
-	/// Base address of Capcom driver.
+	/// Base address of the Capcom driver.
 	pub capcom_base: usize,
 }
 
