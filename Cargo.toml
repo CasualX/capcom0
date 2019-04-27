@@ -33,3 +33,7 @@ features = [
 	"winreg",
 	"winbase",
 ]
+
+[dev-dependencies]
+pelite = "0.7"
+obfstr = { version = "0.1", default-features = false }
