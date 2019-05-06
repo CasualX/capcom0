@@ -20,7 +20,7 @@ UnknownCheats thread: https://www.unknowncheats.me/forum/anti-cheat-bypass/32466
 
 use std::{mem, ops::Range};
 
-use winapi::shared::ntdef::{LIST_ENTRY, UNICODE_STRING, ULONG, NTSTATUS};
+use winapi::shared::ntdef::{LIST_ENTRY, UNICODE_STRING, ULONG, NTSTATUS, PVOID};
 use ntapi::ntldr::PLDR_DATA_TABLE_ENTRY;
 
 use pelite::pattern as pat;
@@ -69,21 +69,21 @@ fn main() {
 	let time_date_stamp = capcom_file.file_header().TimeDateStamp;
 
 	// NTOSKRNL image
-	let ntos_map = pelite::FileMap::open(r"C:\Windows\System32\ntoskrnl.exe").unwrap();
-	let ntos_file = PeFile::from_bytes(&ntos_map).unwrap();
+	let ntoskrnl_map = pelite::FileMap::open(r"C:\Windows\System32\ntoskrnl.exe").unwrap();
+	let ntoskrnl_file = PeFile::from_bytes(&ntoskrnl_map).unwrap();
 
-	let init_range = section_range(ntos_file, b"INIT\0\0\0\0");
-	let page_range = section_range(ntos_file, b"PAGE\0\0\0\0");
+	let init_range = section_range(ntoskrnl_file, b"INIT\0\0\0\0");
+	let page_range = section_range(ntoskrnl_file, b"PAGE\0\0\0\0");
 	let mut save = [0; 4];
 
 	// Find MiLookupDataTableEntry offset
-	assert!(ntos_file.scanner().finds(&pat::parse("BA 01 00 00 00 48 8B F1 E8 $ '").unwrap(), init_range.clone(), &mut save), "MiLookupDataTableEntry not found");
+	assert!(ntoskrnl_file.scanner().finds(&pat::parse("BA 01 00 00 00 48 8B F1 E8 $ '").unwrap(), init_range.clone(), &mut save), "MiLookupDataTableEntry not found");
 	let lookup_offset = save[1] as usize;
 
 	// Find PiDDBCacheLock and PiDDBCacheTable offsets
-	assert!(ntos_file.scanner().finds(&pat::parse("48 89 40 08 48 8D 0D $ '").unwrap(), init_range, &mut save), "Cannot find PiDDBCacheLock!");
+	assert!(ntoskrnl_file.scanner().finds(&pat::parse("48 89 40 08 48 8D 0D $ '").unwrap(), init_range, &mut save), "Cannot find PiDDBCacheLock!");
 	let lock_offset = save[1] as usize;
-	assert!(ntos_file.scanner().finds(&pat::parse("66 03 D2 48 8D 0D $ '").unwrap(), page_range, &mut save), "Cannot find PiDDBCacheTable!");
+	assert!(ntoskrnl_file.scanner().finds(&pat::parse("66 03 D2 48 8D 0D $ '").unwrap(), page_range, &mut save), "Cannot find PiDDBCacheTable!");
 	let table_offset = save[1] as usize;
 
 	println!("ntosknrl.exe!{:#x} MiLookupDataTableEntry", lookup_offset);
@@ -91,11 +91,11 @@ fn main() {
 	println!("ntoskrnl.exe!{:#x} PiDDBCacheTable", table_offset);
 
 	// Delta to ntosknrl image base
-	let ntos_delta = ntos_file.get_export("MmGetSystemRoutineAddress").unwrap().symbol().unwrap() as usize;
+	let ntoskrnl_delta = ntoskrnl_file.get_export("MmGetSystemRoutineAddress").unwrap().symbol().unwrap() as usize;
 
 	let result = capcom0::setup(|driver, device| {
 		let mut capcom_base = 0;
-		let mut ntos_base = 0;
+		let mut ntoskrnl_base = 0;
 
 		let driver_name = driver.file_name();
 		println!("DriverName: {}", String::from_utf16_lossy(driver_name));
@@ -106,17 +106,17 @@ fn main() {
 		unsafe {
 			device.elevate(|ctx| {
 				capcom_base = ctx.capcom_base;
-				ntos_base = (ctx.get_system_routine_address as usize).wrapping_sub(ntos_delta);
+				ntoskrnl_base = (ctx.get_system_routine_address as usize).wrapping_sub(ntoskrnl_delta);
 
 				let MiLookupDataTableEntry:
 					unsafe extern "system" fn(usize, i32) -> PLDR_DATA_TABLE_ENTRY =
-					mem::transmute(ntos_base.wrapping_add(lookup_offset));
+					mem::transmute(ntoskrnl_base.wrapping_add(lookup_offset));
 
 				// Get Capcom's LDR_DATA_TABLE_ENTRY without locking
 				// Overwrite BaseDllName.Length to zero so MiRememberUnloadedDriver breaks out early
-				let capcom_dte = MiLookupDataTableEntry(ctx.capcom_base, 0);
-				if !capcom_dte.is_null() {
-					(*capcom_dte).BaseDllName.Length = 0;
+				let capcom_entry = MiLookupDataTableEntry(ctx.capcom_base, 0);
+				if !capcom_entry.is_null() {
+					(*capcom_entry).BaseDllName.Length = 0;
 				}
 
 				let ExAcquireResourceExclusiveLite = get_system_routine_address!(ctx,
@@ -131,9 +131,12 @@ fn main() {
 				let RtlDeleteElementGenericTableAvl = get_system_routine_address!(ctx,
 					unsafe extern "system" fn(PRTL_AVL_TABLE, *mut PiDDBCacheEntry),
 					wide!("RtlDeleteElementGenericTableAvl"));
+				let ExFreePool = get_system_routine_address!(ctx,
+					unsafe extern "system" fn(PVOID),
+					wide!("ExFreePool"));
 
-				let PiDDBLock = ntos_base.wrapping_add(lock_offset);
-				let PiDDBCache = ntos_base.wrapping_add(table_offset);
+				let PiDDBLock = ntoskrnl_base.wrapping_add(lock_offset);
+				let PiDDBCache = ntoskrnl_base.wrapping_add(table_offset);
 
 				// Locking is... counter-productive in the Capcom hell, oh well
 				ExAcquireResourceExclusiveLite(PiDDBLock, 1);
@@ -147,13 +150,16 @@ fn main() {
 					(*Blink).Flink = Flink;
 					// Remove from the table
 					RtlDeleteElementGenericTableAvl(PiDDBCache, found_entry);
+					// Free memory
+					(*found_entry).TimeDateStamp = 0;
+					ExFreePool((*found_entry).DriverName.Buffer as PVOID);
 				}
 				ExReleaseResourceLite(PiDDBLock);
 			});
 		}
 
-		println!("CapcomBase was {:#x}", capcom_base);
-		println!("NtosBase was {:#x}", ntos_base);
+		println!("Capcom.sys: {:#x}", capcom_base);
+		println!("ntoskrnl.exe: {:#x}", ntoskrnl_base);
 	});
 
 	match result {
