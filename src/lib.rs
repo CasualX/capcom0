@@ -823,6 +823,24 @@ pub struct Context {
 	pub capcom_base: usize,
 }
 
+/// Convenience helper to macro to call get_system_routine_address.
+#[macro_export]
+macro_rules! get_system_routine_address {
+	($ctx:expr, $ty:ty, $name:expr) => {
+		match $name {
+			name => {
+				let name: &[u16] = name;
+				let mut us = UNICODE_STRING {
+					Length: mem::size_of_val(name) as u16,
+					MaximumLength: mem::size_of_val(name) as u16,
+					Buffer: name.as_ptr() as *mut u16,
+				};
+				::std::mem::transmute::<_, $ty>(($ctx.get_system_routine_address)(&mut us))
+			}
+		}
+	}
+}
+
 //----------------------------------------------------------------
 
 #[allow(non_upper_case_globals)]

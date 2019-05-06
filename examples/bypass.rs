@@ -13,6 +13,9 @@ UnknownCheats thread: https://www.unknowncheats.me/forum/anti-cheat-bypass/32466
 
  */
 
+// Only available to 64-bit windows targets.
+#![cfg(all(windows, target_pointer_width = "64"))]
+
 #![allow(non_snake_case, non_camel_case_types)]
 
 use std::{mem, ops::Range};
@@ -25,6 +28,8 @@ use pelite::pe64::*;
 use pelite::pe64::exports::GetProcAddress;
 
 use obfstr::wide;
+
+use capcom0::get_system_routine_address;
 
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -44,18 +49,6 @@ impl PiDDBCacheEntry {
 			..unsafe { mem::zeroed() }
 		}
 	}
-}
-
-// Helper to call MmGetSystemRoutineAddress and cast the return value appropriately
-macro_rules! get_system_routine_address {
-	($ctx:expr, $ty:ty, $ws:expr) => {{
-		match $ws {
-			ws => {
-				let mut us = capcom0::unicode_string(ws);
-				mem::transmute::<_, $ty>(($ctx.get_system_routine_address)(&mut us))
-			}
-		}
-	}};
 }
 
 // Get the virtual address range of the named section

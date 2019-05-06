@@ -5,13 +5,6 @@ Rust bindings to the infamous Capcom driver.
 
 The Capcom driver enables ordinary Administrator applications to gain kernel level ring0 execution privileges.
 
-Binaries
---------
-
-Comes with a binary `elevate` which launches a command prompt with `NT AUTHORITY\SYSTEM` privileges.
-
-Administrator is required to run the binaries. Invoke `build.bat --release` to build the binaries with the right UAC to ask for requireAdministrator when launched.
-
 Examples
 --------
 
