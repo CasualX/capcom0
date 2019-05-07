@@ -29,8 +29,6 @@ use pelite::pe64::exports::GetProcAddress;
 
 use obfstr::wide;
 
-use capcom0::get_system_routine_address;
-
 #[derive(Copy, Clone)]
 #[repr(C)]
 struct PiDDBCacheEntry
@@ -119,21 +117,21 @@ fn main() {
 					(*capcom_entry).BaseDllName.Length = 0;
 				}
 
-				let ExAcquireResourceExclusiveLite = get_system_routine_address!(ctx,
-					unsafe extern "system" fn(PERESOURCE, BOOLEAN) -> BOOLEAN,
-					wide!("ExAcquireResourceExclusiveLite"));
-				let ExReleaseResourceLite = get_system_routine_address!(ctx,
-					unsafe extern "system" fn(PERESOURCE),
-					wide!("ExReleaseResourceLite"));
-				let RtlLookupElementGenericTableAvl = get_system_routine_address!(ctx,
-					unsafe extern "system" fn(PRTL_AVL_TABLE, *mut PiDDBCacheEntry) -> *mut PiDDBCacheEntry,
-					wide!("RtlLookupElementGenericTableAvl"));
-				let RtlDeleteElementGenericTableAvl = get_system_routine_address!(ctx,
-					unsafe extern "system" fn(PRTL_AVL_TABLE, *mut PiDDBCacheEntry),
-					wide!("RtlDeleteElementGenericTableAvl"));
-				let ExFreePool = get_system_routine_address!(ctx,
-					unsafe extern "system" fn(PVOID),
-					wide!("ExFreePool"));
+				let ExAcquireResourceExclusiveLite:
+					unsafe extern "system" fn(PERESOURCE, BOOLEAN) -> BOOLEAN =
+					ctx.get_system_routine_address(wide!("ExAcquireResourceExclusiveLite"));
+				let ExReleaseResourceLite:
+					unsafe extern "system" fn(PERESOURCE) =
+					ctx.get_system_routine_address(wide!("ExReleaseResourceLite"));
+				let RtlLookupElementGenericTableAvl:
+					unsafe extern "system" fn(PRTL_AVL_TABLE, *mut PiDDBCacheEntry) -> *mut PiDDBCacheEntry =
+					ctx.get_system_routine_address(wide!("RtlLookupElementGenericTableAvl"));
+				let RtlDeleteElementGenericTableAvl:
+					unsafe extern "system" fn(PRTL_AVL_TABLE, *mut PiDDBCacheEntry) =
+					ctx.get_system_routine_address(wide!("RtlDeleteElementGenericTableAvl"));
+				let ExFreePool:
+					unsafe extern "system" fn(PVOID) =
+					ctx.get_system_routine_address(wide!("ExFreePool"));
 
 				let PiDDBLock = ntoskrnl_base.wrapping_add(lock_offset);
 				let PiDDBCache = ntoskrnl_base.wrapping_add(table_offset);

