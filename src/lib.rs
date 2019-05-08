@@ -822,22 +822,26 @@ pub struct Context {
 	/// Base address of the Capcom driver.
 	pub capcom_base: usize,
 }
-
-/// Convenience helper to macro to call get_system_routine_address.
-#[macro_export]
-macro_rules! get_system_routine_address {
-	($ctx:expr, $ty:ty, $name:expr) => {
-		match $name {
-			name => {
-				let name: &[u16] = name;
-				let mut us = UNICODE_STRING {
-					Length: mem::size_of_val(name) as u16,
-					MaximumLength: mem::size_of_val(name) as u16,
-					Buffer: name.as_ptr() as *mut u16,
-				};
-				::std::mem::transmute::<_, $ty>(($ctx.get_system_routine_address)(&mut us))
-			}
-		}
+impl Context {
+	/// Calls `MmGetSystemRoutineAddress` with the given name.
+	/// The returned pointer is reinterpreted as the type parameter `F`.
+	///
+	/// # Safety
+	///
+	/// Please only use function pointer type parameters or other pointer sized types.
+	/// This is not checked, please be careful.
+	///
+	/// Please double check the name of the system routine.
+	/// Names which cause the underlying call to return NULL cause undefined behavior unless `F` is an option.
+	#[inline(always)]
+	pub unsafe fn get_system_routine_address<F>(&self, name: &[u16]) -> F {
+		let mut us = UNICODE_STRING {
+			Length: mem::size_of_val(name) as u16,
+			MaximumLength: mem::size_of_val(name) as u16,
+			Buffer: name.as_ptr() as *mut u16,
+		};
+		let address = (self.get_system_routine_address)(&mut us);
+		mem::transmute_copy(&address)
 	}
 }
 
