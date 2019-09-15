@@ -75,13 +75,13 @@ fn main() {
 	let mut save = [0; 4];
 
 	// Find MiLookupDataTableEntry offset
-	assert!(ntoskrnl_file.scanner().finds(&pat::parse("BA 01 00 00 00 48 8B F1 E8 $ '").unwrap(), init_range.clone(), &mut save), "MiLookupDataTableEntry not found");
+	assert!(ntoskrnl_file.scanner().finds(pat!("BA 01 00 00 00 48 8B F1 E8 $ '"), init_range.clone(), &mut save), "MiLookupDataTableEntry not found");
 	let lookup_offset = save[1] as usize;
 
 	// Find PiDDBCacheLock and PiDDBCacheTable offsets
-	assert!(ntoskrnl_file.scanner().finds(&pat::parse("48 89 40 08 48 8D 0D $ '").unwrap(), init_range, &mut save), "Cannot find PiDDBCacheLock!");
+	assert!(ntoskrnl_file.scanner().finds(pat!("48 89 40 08 48 8D 0D $ '"), init_range, &mut save), "Cannot find PiDDBCacheLock!");
 	let lock_offset = save[1] as usize;
-	assert!(ntoskrnl_file.scanner().finds(&pat::parse("66 03 D2 48 8D 0D $ '").unwrap(), page_range, &mut save), "Cannot find PiDDBCacheTable!");
+	assert!(ntoskrnl_file.scanner().finds(pat!("66 03 D2 48 8D 0D $ '"), page_range, &mut save), "Cannot find PiDDBCacheTable!");
 	let table_offset = save[1] as usize;
 
 	println!("ntosknrl.exe!{:#x} MiLookupDataTableEntry", lookup_offset);
