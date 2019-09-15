@@ -35,5 +35,5 @@ features = [
 ]
 
 [dev-dependencies]
-pelite = "0.7"
+pelite = "0.8"
 obfstr = { version = "0.1", default-features = false }
