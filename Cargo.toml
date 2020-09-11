@@ -16,6 +16,7 @@ lto = true
 
 [dependencies]
 ntapi = "0.3"
+obfstr = "0.2"
 
 [dependencies.winapi]
 version = "0.3"
@@ -36,4 +37,4 @@ features = [
 
 [dev-dependencies]
 pelite = "0.8"
-obfstr = { version = "0.1", default-features = false }
+obfstr = "0.2"
