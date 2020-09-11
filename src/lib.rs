@@ -28,23 +28,25 @@ fn main() {
 #![cfg(all(windows, target_pointer_width = "64"))]
 
 use std::{error, fmt, mem, ptr, slice};
-use std::cell::{Cell};
+use std::cell::Cell;
 use std::ffi::{OsStr, OsString};
 use std::os::windows::ffi::{OsStrExt, OsStringExt};
 
 use winapi::um::winreg::{RegCreateKeyExW, RegSetValueExW, RegCloseKey, RegDeleteTreeW, HKEY_LOCAL_MACHINE};
-use winapi::um::winnt::{HANDLE, FILE_ALL_ACCESS, FILE_SHARE_READ, FILE_ATTRIBUTE_NORMAL, PAGE_EXECUTE_READWRITE, MEM_COMMIT, MEM_RESERVE, MEM_RELEASE, KEY_ALL_ACCESS, REG_SZ, REG_DWORD, REG_CREATED_NEW_KEY, SERVICE_KERNEL_DRIVER, SERVICE_DEMAND_START, SERVICE_ERROR_NORMAL};
-use winapi::um::errhandlingapi::{GetLastError};
+use winapi::um::winnt::*;
+use winapi::um::errhandlingapi::GetLastError;
 use winapi::um::fileapi::{DeleteFileW, CreateFileW, ReadFile, WriteFile, FlushFileBuffers, CREATE_NEW, OPEN_EXISTING};
 use winapi::um::handleapi::{CloseHandle, INVALID_HANDLE_VALUE};
 use winapi::um::memoryapi::{VirtualAlloc, VirtualFree};
-use winapi::um::ioapiset::{DeviceIoControl};
-use winapi::um::processenv::{GetCurrentDirectoryW};
-use winapi::shared::minwindef::{HKEY, BYTE, FALSE, LPVOID, LPCVOID, DWORD};
-use winapi::shared::winerror::{ERROR_FILE_NOT_FOUND, ERROR_SUCCESS};
+use winapi::um::ioapiset::DeviceIoControl;
+use winapi::um::processenv::GetCurrentDirectoryW;
+use winapi::shared::minwindef::*;
+use winapi::shared::winerror::*;
 use winapi::shared::ntdef::{UNICODE_STRING, PUNICODE_STRING, PVOID};
 
 use ntapi::ntioapi::{NtLoadDriver, NtUnloadDriver};
+
+use obfstr::wide;
 
 //----------------------------------------------------------------
 
@@ -381,7 +383,7 @@ impl Driver {
 	pub fn image() -> &'static [u8; 0x2950] {
 		#[repr(align(16))]
 		struct Align16<T>(T);
-		static IMAGE: Align16<[u8; 0x2950]> = Align16(include!("capcom.rs"));
+		static IMAGE: Align16<[u8; 0x2950]> = Align16(include!("capcom.txt"));
 		&IMAGE.0
 	}
 
@@ -452,7 +454,7 @@ impl Driver {
 			// Followed by the current directory path
 			GetCurrentDirectoryW(cd_len, native_path.as_mut_ptr().offset(4));
 			// Followed by the driver file name \Capcom.sys and nul terminator
-			native_path[3 + cd_len as usize..].copy_from_slice(&SLASH_CAPCOM_SYS);
+			native_path[3 + cd_len as usize..].copy_from_slice(SLASH_CAPCOM_SYS);
 			// The service path is a fixed string
 			let service_path = NT_SERVICES_PATH.to_vec().into_boxed_slice();
 			Driver { service_path, native_path }
@@ -612,10 +614,10 @@ impl Driver {
 			}
 			// Assign the registry keys, if any of these fail just ignore as if it's not a big deal
 			// If any of them were important, loading the driver later returns an appropriate error
-			reg_set_sz(key, &ImagePath, self.native_path());
-			reg_set_dword(key, &Type, &SERVICE_KERNEL_DRIVER);
-			reg_set_dword(key, &Start, &SERVICE_DEMAND_START);
-			reg_set_dword(key, &ErrorControl, &SERVICE_ERROR_NORMAL);
+			reg_set_sz(key, wide!("ImagePath\0"), self.native_path());
+			reg_set_dword(key, wide!("Type\0"), &SERVICE_KERNEL_DRIVER);
+			reg_set_dword(key, wide!("Start\0"), &SERVICE_DEMAND_START);
+			reg_set_dword(key, wide!("ErrorControl\0"), &SERVICE_ERROR_NORMAL);
 			Ok(())
 		}
 	}
@@ -669,7 +671,7 @@ impl fmt::Debug for Driver {
 ///
 /// Returns false if the required privileges cannot be acquired, eg. when not running as Administrator.
 pub fn enable_privileges() -> bool {
-	unsafe { enable_privilege(&SeLoadDriverPrivilege) }
+	unsafe { enable_privilege(SeLoadDriverPrivilege) }
 }
 
 #[inline(never)]
@@ -849,15 +851,12 @@ impl Context {
 
 #[allow(non_upper_case_globals)]
 mod lit {
-	pub static ImagePath: [u16; 10] = /*ImagePath*/[73u16, 109, 97, 103, 101, 80, 97, 116, 104, 0];
-	pub static Type: [u16; 5] = /*Type*/[84u16, 121, 112, 101, 0];
-	pub static Start: [u16; 6] = /*Start*/[83u16, 116, 97, 114, 116, 0];
-	pub static ErrorControl: [u16; 13] = /*ErrorControl*/[69u16, 114, 114, 111, 114, 67, 111, 110, 116, 114, 111, 108, 0];
-	pub static CAPCOM_DEVICE: [u16; 15] = /*\\.\Htsysm72FB*/[92u16, 92, 46, 92, 72, 116, 115, 121, 115, 109, 55, 50, 70, 66, 0];
-	pub static SeLoadDriverPrivilege: [u16; 22] = /*SeLoadDriverPrivilege*/[83u16, 101, 76, 111, 97, 100, 68, 114, 105, 118, 101, 114, 80, 114, 105, 118, 105, 108, 101, 103, 101, 0];
-	pub static NT_SERVICES_PATH: [u16; 63] = /*\Registry\Machine\System\CurrentControlSet\Services\Htsysm72FB*/[92u16, 82, 101, 103, 105, 115, 116, 114, 121, 92, 77, 97, 99, 104, 105, 110, 101, 92, 83, 121, 115, 116, 101, 109, 92, 67, 117, 114, 114, 101, 110, 116, 67, 111, 110, 116, 114, 111, 108, 83, 101, 116, 92, 83, 101, 114, 118, 105, 99, 101, 115, 92, 72, 116, 115, 121, 115, 109, 55, 50, 70, 66, 0];
-	pub static SLASH_CAPCOM_SYS: [u16; 12] = /*\Capcom.sys*/[92u16, 67, 97, 112, 99, 111, 109, 46, 115, 121, 115, 0];
-	pub static RECOVER_FILE_NAME: [u16; 8] = /*RECOVER*/[82u16, 69, 67, 79, 86, 69, 82, 0];
+	use obfstr::wide;
+	pub const CAPCOM_DEVICE: &[u16] = wide!("\\\\.\\Htsysm72FB\0");
+	pub const SeLoadDriverPrivilege: &[u16] = wide!("SeLoadDriverPrivilege\0");
+	pub const NT_SERVICES_PATH: &[u16] = wide!("\\Registry\\Machine\\System\\CurrentControlSet\\Services\\Htsysm72FB\0");
+	pub const SLASH_CAPCOM_SYS: &[u16] = wide!("\\SysVAD.sys\0");
+	pub const RECOVER_FILE_NAME: &[u16] = wide!("RECOVER\0");
 }
 use self::lit::*;
 
