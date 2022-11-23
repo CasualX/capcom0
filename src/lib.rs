@@ -27,7 +27,7 @@ fn main() {
 // Only available to 64-bit windows targets.
 #![cfg(all(windows, target_pointer_width = "64"))]
 
-use std::{error, fmt, mem, ptr};
+use std::{error, fmt, mem, ptr, slice};
 use std::cell::{Cell};
 use std::ffi::{OsStr, OsString};
 use std::os::windows::ffi::{OsStrExt, OsStringExt};
@@ -516,11 +516,11 @@ impl Driver {
 			if handle != INVALID_HANDLE_VALUE {
 				defer! { CloseHandle(handle); }
 				// Read the contents of the RECOVER file
-				let mut buffer: [u16; 512] = mem::uninitialized();
-				let mut bytes_read = mem::uninitialized();
+				let mut buffer = mem::MaybeUninit::<[u16; 512]>::uninit();
+				let mut bytes_read = 0;
 				if ReadFile(handle, buffer.as_mut_ptr() as LPVOID, mem::size_of_val(&buffer) as u32, &mut bytes_read, ptr::null_mut()) != FALSE {
 					let words_read = (bytes_read / 2) as usize;
-					let buffer = &buffer[..words_read];
+					let buffer = slice::from_raw_parts(&buffer as *const _ as *const u16, words_read);
 					// Extract one or two strings from the buffer
 					let (name, path) = match buffer.iter().position(|&c| c == '\n' as u16) {
 						Some(split_at) => (Some(&buffer[..split_at]), &buffer[split_at + 1..]),
@@ -543,7 +543,7 @@ impl Driver {
 			if handle != INVALID_HANDLE_VALUE {
 				defer! { CloseHandle(handle); }
 				// Write the driver contents
-				let mut bytes_written = mem::uninitialized();
+				let mut bytes_written = 0;
 				let image = Self::image();
 				if WriteFile(handle, image.as_ptr() as LPCVOID, image.len() as DWORD, &mut bytes_written, ptr::null_mut()) != FALSE {
 					return Ok(());
@@ -568,7 +568,7 @@ impl Driver {
 			let handle = CreateFileW(RECOVER_FILE_NAME.as_ptr(), FILE_ALL_ACCESS, 0, ptr::null_mut(), CREATE_NEW, FILE_ATTRIBUTE_NORMAL, ptr::null_mut());
 			if handle != INVALID_HANDLE_VALUE {
 				defer! { CloseHandle(handle); }
-				let mut bytes_written = mem::uninitialized();
+				let mut bytes_written = 0;
 				let success =
 					// WriteFile(handle, self.service_name().as_ptr() as LPCVOID, mem::size_of_val(self.service_name()) as DWORD, &mut bytes_written, ptr::null_mut()) != FALSE &&
 					// WriteFile(handle, &('\n' as u16) as *const _ as LPCVOID, 2, &mut bytes_written, ptr::null_mut()) != FALSE &&
@@ -792,7 +792,7 @@ impl Device {
 		let mut payload = self.payload.offset(8);
 		let mut result = 0;
 
-		let mut bytes_returned = mem::uninitialized();
+		let mut bytes_returned = 0;
 		const IOCTL_X64: DWORD = 0xAA013044; // X64
 		//const IOCTL_X86: DWORD = 0xAA012044; // X86
 		DeviceIoControl(self.device, IOCTL_X64, (&mut payload) as *mut _ as LPVOID, 8, &mut result as *mut _ as LPVOID, 4, &mut bytes_returned, ptr::null_mut()) != FALSE
