@@ -15,7 +15,8 @@ repository = "https://github.com/CasualX/capcom0"
 lto = true
 
 [dependencies]
-ntapi = "0.3"
+ntapi = "0.4"
+obfstr = "0.4"
 
 [dependencies.winapi]
 version = "0.3"
@@ -35,5 +36,5 @@ features = [
 ]
 
 [dev-dependencies]
-pelite = "0.8"
-obfstr = { version = "0.1", default-features = false }
+pelite = "0.10"
+obfstr = "0.4"

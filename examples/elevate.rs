@@ -92,7 +92,7 @@ fn main() {
 static mut COMMAND_LINE: [u16; 28] = /*C:\Windows\System32\cmd.exe*/[67u16, 58, 92, 87, 105, 110, 100, 111, 119, 115, 92, 115, 121, 115, 116, 101, 109, 51, 50, 92, 99, 109, 100, 46, 101, 120, 101, 0];
 fn launch() -> bool {
 	unsafe {
-		let mut num_args = mem::uninitialized();
+		let mut num_args = 0;
 		let cmd_args = CommandLineToArgvW(GetCommandLineW(), &mut num_args);
 
 		let app_name = if num_args > 1 { *cmd_args.offset(1) }
@@ -101,10 +101,10 @@ fn launch() -> bool {
 		let cmd_line = if num_args > 2 { *cmd_args.offset(2) }
 		else { ptr::null_mut() };
 
-		let mut process_info: PROCESS_INFORMATION = mem::uninitialized();
+		let mut process_info = mem::MaybeUninit::<PROCESS_INFORMATION>::uninit();
 		let mut startup_info: STARTUPINFOW = mem::zeroed();
 		startup_info.cb = mem::size_of::<STARTUPINFOW>() as u32;
-		let result = CreateProcessW(app_name, cmd_line, ptr::null_mut(), ptr::null_mut(), FALSE, CREATE_NEW_CONSOLE, ptr::null_mut(), ptr::null_mut(), &mut startup_info, &mut process_info) != FALSE;
+		let result = CreateProcessW(app_name, cmd_line, ptr::null_mut(), ptr::null_mut(), FALSE, CREATE_NEW_CONSOLE, ptr::null_mut(), ptr::null_mut(), &mut startup_info, process_info.as_mut_ptr()) != FALSE;
 
 		// Leak all the resources :)
 		return result;
